@@ -11,12 +11,13 @@ from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters import Text
 
 from create_bot import dp, bot, service, deleting_calendars
-from states import StatesTime
+from states import StatesTime, StatesDays
 from keyboards.calendars import list_calendar
 from keyboards import calendars, actions
 from utils import get_my_events
 
 minutes = 0.1
+days_amount = 7
 
 
 # @dp.message_handler(commands="start")
@@ -116,31 +117,44 @@ async def callbacks_del(call: types.CallbackQuery):
     await call.answer()
 
 
-@dp.message_handler(text="Посмотреть события запланированные на ближайшие 7 дней")
-async def get_events(message: types.Message):
-    length = len(list_calendar)
-    for i in range(length):
-        start_date = datetime.datetime.now()
-        end_date = start_date + datetime.timedelta(days=7)
-        await message.answer("События в календаре " + list_calendar[i]['summary'] + ":")
-        result = get_my_events(calendarId=list_calendar[i]["id"], timeMin=start_date.isoformat() + 'Z',
-                               timeMax=end_date.isoformat() + 'Z')
-        leng = len(result['items'])
-        print(result)
-        list_events = []
-        if leng == 0:
-            await message.answer("Календарь пуст")
-        else:
-            for j in range(leng):
-                event_descr = "Событие: " + result['items'][j]['summary'] + "\n"
-                if 'description' in result['items'][j]:
-                    event_descr += "Описание: " + result['items'][j]['description'] + "\n"
-                event_descr += "Время начала:  " \
-                               + str(datetime.datetime.fromisoformat(result['items'][j]['start']['dateTime'])) + "\n"
-                if 'hangoutLink' in result['items'][j]:
-                    event_descr += "Присоединиться: " + result['items'][j]['hangoutLink'] + "\n"
-                list_events.append(event_descr)
-            await message.answer("\n".join(list_events) + "\n")
+@dp.message_handler(text="Посмотреть события запланированные на ближайшие n дней")
+async def get_days(message: types.Message, state: None):
+    await StatesDays.days.set()
+    await message.answer("На сколько дней вперед вы хотите посмотреть запланированные события?",
+                         reply_markup=types.ReplyKeyboardRemove())
+
+
+@dp.message_handler(state=StatesDays.days)
+async def get_events(message: types.Message, state: FSMContext):
+    global days_amount
+    days_amount = message.text
+    if re.match(r'^\d+?$', days_amount) is None:
+        await message.answer("Введите целое число!")
+    else:
+        length = len(list_calendar)
+        for i in range(length):
+            start_date = datetime.datetime.now()
+            end_date = start_date + datetime.timedelta(days=int(days_amount))
+            await message.answer("События в календаре " + list_calendar[i]['summary'] + ":")
+            result = get_my_events(calendarId=list_calendar[i]["id"], timeMin=start_date.isoformat() + 'Z',
+                                   timeMax=end_date.isoformat() + 'Z')
+            leng = len(result['items'])
+            print(result)
+            list_events = []
+            if leng == 0:
+                await message.answer("Календарь пуст")
+            else:
+                for j in range(leng):
+                    event_descr = "Событие: " + result['items'][j]['summary'] + "\n"
+                    if 'description' in result['items'][j]:
+                        event_descr += "Описание: " + result['items'][j]['description'] + "\n"
+                    event_descr += "Время начала:  " \
+                                   + str(datetime.datetime.fromisoformat(result['items'][j]['start']['dateTime'])) + "\n"
+                    if 'hangoutLink' in result['items'][j]:
+                        event_descr += "Присоединиться: " + result['items'][j]['hangoutLink'] + "\n"
+                    list_events.append(event_descr)
+                await message.answer("\n".join(list_events) + "\n")
+        await state.finish()
 
 
 async def command_other(message: types.Message):
