@@ -1,8 +1,7 @@
-import telegram as telegram
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.utils.markdown import bold, italic
-from utils import fun
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
 from create_bot import deleting_calendars, list_calendar
+from utils import fun
 
 
 def genmarkup():

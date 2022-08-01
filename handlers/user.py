@@ -1,54 +1,65 @@
+import asyncio
 import datetime
-import json
 import re
-import time
-
-import dateutil
-import flask
 
 from aiogram import types, Dispatcher
 from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters import Text
 
-from create_bot import dp, bot, service, deleting_calendars
-from states import StatesTime, StatesDays
-from keyboards.calendars import list_calendar
+import utils
+import create_bot
 from keyboards import calendars, actions
+from keyboards.calendars import list_calendar
+from states import StatesTime, StatesDays
 from utils import get_my_events
 
-minutes = 0.1
-days_amount = 7
+
+days_amount = None
 
 
 # @dp.message_handler(commands="start")
 async def command_start(message: types.Message, state: None):
     name = [message.from_user.first_name, message.from_user.last_name]
     name = ' '.join(filter(None, name))
-    await bot.send_message(message.from_user.id, "Привет, " + name + "!" + " Этот бот поможет не забыть тебе о "
+    create_bot.chat_ids[message.from_user.id] = message.from_user
+    await create_bot.bot.send_message(message.from_user.id, "Привет, " + name + "!" + " Этот бот поможет не забыть тебе о "
                                                                            "событиях из твоего Google-календаря. "
                                                                            "Приятного использования!")
-    await bot.send_message(message.from_user.id,
+    await create_bot.bot.send_message(message.from_user.id,
                            "Выберите календари, уведомления о событиях которых вы НЕ хотели бы получать",
                            reply_markup=calendars.genmarkup())
 
 
-@dp.message_handler(text="Установить время оповещений")
-async def fun(message: types.Message, state: None):
+async def func():
+    while True:
+        await utils.get_new_calendar()
+        await utils.get_new_events()
+        await utils.get_event_in_time()
+        await asyncio.sleep(3)
+
+
+@create_bot.dp.message_handler(text="Запустить бота")
+async def run_bot(message: types.Message):
+    loop = asyncio.get_event_loop()
+    loop.create_task(func())
+    await message.answer("Вы успешно запустили бота!", reply_markup=actions.actions_before_finish())
+
+
+@create_bot.dp.message_handler(text="Установить время оповещений")
+async def time_question(message: types.Message, state: None):
     await StatesTime.time.set()
-    await message.answer("За какое время до начала событий вы хотите получать уведомления о них?",
-                         reply_markup=types.ReplyKeyboardRemove())
+    await message.answer("За какое время(в минутах) до начала событий вы хотите получать уведомления о них?")
 
 
-@dp.message_handler(state=StatesTime.time)
+@create_bot.dp.message_handler(state=StatesTime.time)
 async def get_minutes(message: types.Message, state: FSMContext):
-    global minutes
-    minutes = message.text
-    if re.match(r'^-?\d+(?:\.\d+)?$', minutes) is None:
+    create_bot.minutes = message.text
+    if re.match(r'^-?\d+(?:\.\d+)?$', create_bot.minutes) is None:
         await message.answer("Введите число! Если число дробное, то дробную часть отделите точкой.")
     else:
-        local_time = float(minutes)
+        local_time = float(create_bot.minutes)
         local_time = local_time * 60
-        await message.answer("Все ок вот ваш тайм: " + str(local_time))
+        await message.answer("Все ок вот ваш тайм: " + str(local_time), reply_markup=actions.actions_for_run())
         await state.finish()
 
 
@@ -67,10 +78,10 @@ async def update_keyboard(message: types.Message, text: str):
 async def update_deleting_keyboard(message: types.Message, text: str):
     # Общая функция для обновления текста с отправкой той же клавиатуры
     await message.edit_text(text + "Выберите календари, которые вы хотите вернуть",
-                            reply_markup=calendars.gen_del_markup(deleting_calendars))
+                            reply_markup=calendars.gen_del_markup(create_bot.deleting_calendars))
 
 
-@dp.callback_query_handler(Text(startswith="calendar_"))
+@create_bot.dp.callback_query_handler(Text(startswith="calendar_"))
 async def callbacks_num(call: types.CallbackQuery):
     action = call.data.split("_")[1]
     length = len(list_calendar)
@@ -78,53 +89,52 @@ async def callbacks_num(call: types.CallbackQuery):
         list_title = []
         for i in range(length):
             list_title.append(list_calendar[i]['summary'])
-        await bot.delete_message(chat_id=call.from_user.id, message_id=call.message.message_id)
-        await bot.send_message(chat_id=call.from_user.id, text="Вы успешно выбрали календари. Вот список календарей:")
-        await bot.send_message(chat_id=call.from_user.id, text='\n'.join(list_title))
-        await bot.send_message(chat_id=call.from_user.id, text="Выберите действие",
-                               reply_markup=actions.keyboard_actions)
+        await create_bot.bot.delete_message(chat_id=call.from_user.id, message_id=call.message.message_id)
+        await create_bot.bot.send_message(chat_id=call.from_user.id, text="Вы успешно выбрали календари. Вот список календарей:")
+        await create_bot.bot.send_message(chat_id=call.from_user.id, text='\n'.join(list_title))
+        await create_bot.bot.send_message(chat_id=call.from_user.id, text="Выберите действие",
+                               reply_markup=actions.actions_before_finish())
     elif action == "return":
-        if len(deleting_calendars) == 0:
+        if len(create_bot.deleting_calendars) == 0:
             await call.answer(text='Нет удаленных календарей')
         else:
-            await bot.delete_message(chat_id=call.from_user.id, message_id=call.message.message_id)
-            await bot.send_message(chat_id=call.from_user.id,
+            await create_bot.bot.delete_message(chat_id=call.from_user.id, message_id=call.message.message_id)
+            await create_bot.bot.send_message(chat_id=call.from_user.id,
                                    text="Выберите календари, которые вы хотите вернуть",
-                                   reply_markup=calendars.gen_del_markup(deleting_calendars))
+                                   reply_markup=calendars.gen_del_markup(create_bot.deleting_calendars))
 
     else:
         for i in range(length):
             if action == str(i):
                 calendar_whole, calendar_title = get_calendar_and_title(i)
-                deleting_calendars.append(list_calendar.pop(i))
+                create_bot.deleting_calendars.append(list_calendar.pop(i))
                 await update_keyboard(call.message, calendar_title + " успешно удален. ")
     await call.answer()
 
 
-@dp.callback_query_handler(Text(startswith="delcalendar_"))
+@create_bot.dp.callback_query_handler(Text(startswith="delcalendar_"))
 async def callbacks_del(call: types.CallbackQuery):
     action = call.data.split("_")[1]
-    length = len(deleting_calendars)
+    length = len(create_bot.deleting_calendars)
     if action == "close":
         await update_keyboard(call.message, "")
     else:
         for i in range(length):
             if action == str(i):
-                inserting_calendar = deleting_calendars.pop(i)
+                inserting_calendar = create_bot.deleting_calendars.pop(i)
                 list_calendar.append(inserting_calendar)
                 await update_deleting_keyboard(call.message, inserting_calendar['summary'] + " успешно возвращен. ")
 
     await call.answer()
 
 
-@dp.message_handler(text="Посмотреть события запланированные на ближайшие n дней")
+@create_bot.dp.message_handler(text="Посмотреть события запланированные на ближайшие n дней")
 async def get_days(message: types.Message, state: None):
     await StatesDays.days.set()
-    await message.answer("На сколько дней вперед вы хотите посмотреть запланированные события?",
-                         reply_markup=types.ReplyKeyboardRemove())
+    await message.answer("На сколько дней вперед вы хотите посмотреть запланированные события?")
 
 
-@dp.message_handler(state=StatesDays.days)
+@create_bot.dp.message_handler(state=StatesDays.days)
 async def get_events(message: types.Message, state: FSMContext):
     global days_amount
     days_amount = message.text
@@ -138,21 +148,13 @@ async def get_events(message: types.Message, state: FSMContext):
             await message.answer("События в календаре " + list_calendar[i]['summary'] + ":")
             result = get_my_events(calendarId=list_calendar[i]["id"], timeMin=start_date.isoformat() + 'Z',
                                    timeMax=end_date.isoformat() + 'Z')
-            leng = len(result['items'])
-            print(result)
+            leng = len(result)
             list_events = []
             if leng == 0:
                 await message.answer("Календарь пуст")
             else:
                 for j in range(leng):
-                    event_descr = "Событие: " + result['items'][j]['summary'] + "\n"
-                    if 'description' in result['items'][j]:
-                        event_descr += "Описание: " + result['items'][j]['description'] + "\n"
-                    event_descr += "Время начала:  " \
-                                   + str(datetime.datetime.fromisoformat(result['items'][j]['start']['dateTime'])) + "\n"
-                    if 'hangoutLink' in result['items'][j]:
-                        event_descr += "Присоединиться: " + result['items'][j]['hangoutLink'] + "\n"
-                    list_events.append(event_descr)
+                    list_events.append(utils.get_events_description(result[j]))
                 await message.answer("\n".join(list_events) + "\n")
         await state.finish()
 
@@ -160,7 +162,7 @@ async def get_events(message: types.Message, state: FSMContext):
 async def command_other(message: types.Message):
     name = [message.from_user.first_name, message.from_user.last_name]
     name = ' '.join(filter(None, name))
-    await message.answer("Я обязательно отвечу на твое сообщение, но не сегодня, " + name + "!")
+    await message.answer(name + ", нажмите на \start, чтобы заново выбрать календари и установить время оповещений!")
 
 
 def register_handlers_user(dp: Dispatcher):
