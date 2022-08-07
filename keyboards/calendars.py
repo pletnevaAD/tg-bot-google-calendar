@@ -20,7 +20,7 @@ def genmarkup():
         keyboard_calendars1.insert(button)
     keyboard_calendars1.add(
         InlineKeyboardButton(text="Вернуть удаленный календарь", callback_data="calendar_return"))
-    keyboard_calendars1.add(InlineKeyboardButton(text="Закрыть", callback_data="calendar_close"))
+    keyboard_calendars1.add(InlineKeyboardButton(text="Готово", callback_data="calendar_close"))
     return keyboard_calendars1
 
 
@@ -30,5 +30,5 @@ def gen_del_markup(list_del_calendars):
     for e in range(length1):
         button = InlineKeyboardButton(text=list_del_calendars[e]["summary"], callback_data="delcalendar_" + str(e))
         keyboard_calendars1.insert(button)
-    keyboard_calendars1.insert(InlineKeyboardButton(text="Закрыть", callback_data="delcalendar_close"))
+    keyboard_calendars1.insert(InlineKeyboardButton(text="Готово", callback_data="delcalendar_close"))
     return keyboard_calendars1

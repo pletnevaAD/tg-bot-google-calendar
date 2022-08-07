@@ -87,7 +87,11 @@ async def get_new_calendar():
 
 
 def get_events_description(item):
-    event_descr = "Событие: " + item['summary'] + "\n"
+    event_descr = ""
+    if 'summary' in item:
+        event_descr += "Событие: " + item['summary'] + "\n"
+    else:
+        event_descr += "Событие: " + "без названия" + "\n"
     if 'description' in item:
         event_descr += "Описание: " + item['description'] + "\n"
     if 'dateTime' in item['start']:
@@ -107,9 +111,7 @@ async def get_new_events():
     result = []
     for calendar in list_calendar:
         result.append(service.events().list(calendarId=calendar['id'],
-                                            timeMin=(datetime.now()-timedelta(hours=3)).isoformat() + 'Z').execute()['items'])
-    print("result")
-    print(result)
+                                            timeMin=(datetime.utcnow()).isoformat() + 'Z').execute()['items'])
     if result != list_events:
         length_result = len(result)
         for i in range(length_result):
@@ -156,23 +158,21 @@ async def get_event_in_time():
             for j in range(len(list_events[i])):
                 if 'dateTime' in list_events[i][j]['start']:
                     delta = ((datetime.fromisoformat(
-                        list_events[i][j]['start']['dateTime']).replace(tzinfo=None) - datetime.now().replace(
-                        tzinfo=None)).total_seconds()) / 60.0
-                    print(list_events[i][j]['summary'])
-                    print(delta)
-                    if -1.6/60 <= (float(create_bot.minutes) - delta) <= 1.5 / 60.0:
+                        list_events[i][j]['start']['dateTime']).replace(tzinfo=timezone.utc) - datetime.now().replace(
+                        tzinfo=timezone.utc)).total_seconds()) / 60.0
+                    if 0 <= (float(create_bot.minutes) - delta) <= 3.1 / 60.0:
                         for id in create_bot.chat_ids:
                             await create_bot.bot.send_message(id,
-                                                              text="Через " + create_bot.minutes + "минут!\n"
+                                                              text="Через " + create_bot.minutes + " минут!\n"
                                                                    + get_events_description(
                                                                   list_events[i][j]))
                 if 'date' in list_events[i][j]['start']:
                     delta = (datetime.fromisoformat(
-                        list_events[i][j]['start']['date']).replace(tzinfo=None) - datetime.now().replace(
-                        tzinfo=None)).total_seconds() / 60.0
-                    if 0 <= (float(create_bot.minutes) - delta) <= 3.0 / 60.0:
+                        list_events[i][j]['start']['date']).replace(tzinfo=timezone.utc) - datetime.now().replace(
+                        tzinfo=timezone.utc)).total_seconds() / 60.0
+                    if 0 <= (float(create_bot.minutes) - delta) <= 3.1 / 60.0:
                         for id in create_bot.chat_ids:
                             await create_bot.bot.send_message(id,
-                                                              text="Через " + create_bot.minutes + "минут!"
+                                                              text="Через " + create_bot.minutes + " минут!"
                                                                    + get_events_description(
                                                                   list_events[i][j]))

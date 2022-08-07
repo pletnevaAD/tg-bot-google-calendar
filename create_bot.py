@@ -1,11 +1,16 @@
 import logging
-from datetime import datetime, timedelta
+import pprint
+from datetime import datetime, timedelta, timezone
 
 from aiogram import Bot, Dispatcher, types
 from os import getenv
 from sys import exit
+
+from dateutil.tz import tzlocal
+
 from create_calendar import get_calendar_service
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
+from tzlocal import get_localzone
 
 bot_token = getenv("BOT_TOKEN")
 if not bot_token:
@@ -20,8 +25,5 @@ list_calendar = service.calendarList().list().execute()['items']
 list_events = []
 for calendar in list_calendar:
     list_events.append(service.events().list(calendarId=calendar['id'],
-                                             timeMin=(datetime.now() - timedelta(hours=3)).isoformat() + 'Z').execute()[
-                           'items'])
-print("list")
-print(list_events)
+                                             timeMin=(datetime.utcnow()).isoformat() + 'Z').execute()['items'])
 minutes = None

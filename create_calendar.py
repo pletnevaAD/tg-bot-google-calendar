@@ -8,7 +8,7 @@ from googleapiclient.discovery import build
 # If modifying these scopes, delete the file token.pickle.
 
 
-SCOPES = ['https://www.googleapis.com/auth/calendar']
+SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
 
 CREDENTIALS_FILE = 'client_secret.json'
 
