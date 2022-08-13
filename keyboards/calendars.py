@@ -1,22 +1,23 @@
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-from create_bot import deleting_calendars, list_calendar
+import create_bot
+from account import Account
 from utils import fun
 
 
-def genmarkup():
+def genmarkup(account: Account):
     keyboard_calendars1 = InlineKeyboardMarkup(row_width=2)
-    list_calendar.clear()
-    list_calendar.extend(fun())
-    length1 = len(list_calendar)
-    length2 = len(deleting_calendars)
-    for i in deleting_calendars:
-        for e in list_calendar:
-            if (i['id']) == (e['id']):
-                list_calendar.pop(list_calendar.index(e))
+    account.list_calendar.clear()
+    account.list_calendar.extend(fun(account))
+    length1 = len(account.list_calendar)
+    length2 = len(account.deleting_calendars)
+    for i in account.deleting_calendars:
+        for k in account.list_calendar:
+            if (i['id']) == (k['id']):
+                account.list_calendar.pop(account.list_calendar.index(k))
                 length1 = length1 - 1
     for e in range(length1):
-        button = InlineKeyboardButton(text=list_calendar[e]["summary"], callback_data="calendar_" + str(e))
+        button = InlineKeyboardButton(text=account.list_calendar[e]["summary"], callback_data="calendar_" + str(e))
         keyboard_calendars1.insert(button)
     keyboard_calendars1.add(
         InlineKeyboardButton(text="Вернуть удаленный календарь", callback_data="calendar_return"))
