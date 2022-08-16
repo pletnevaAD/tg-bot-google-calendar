@@ -44,20 +44,14 @@ async def func():
     while True:
         for i in range(len(create_bot.account)):
             if create_bot.account[i].run == 1:
-                await utils.get_new_calendar(create_bot.account[i])
-                await utils.get_new_events(create_bot.account[i])
+                await utils.update_calendar(create_bot.account[i])
+                await utils.update_events(create_bot.account[i])
                 await utils.get_event_in_time(create_bot.account[i])
         await asyncio.sleep(3)
 
+
 # @create_bot.dp.message_handler(text="Запустить бота")
 async def run_bot(message: types.Message):
-    # for i in range(len(create_bot.account)):
-    #     if create_bot.account[i].chat_id == message.from_user.id:
-    #         pprint.pprint(create_bot.account[i].list_calendar)
-    #         print("\n___________________")
-    #         pprint.pprint(create_bot.account[i].deleting_calendars)
-    #         print("\n___________________")
-    #         pprint.pprint(create_bot.account[i].list_events)
     for account in create_bot.account:
         if account.chat_id == message.from_user.id:
             account.run = 1
@@ -65,7 +59,8 @@ async def run_bot(message: types.Message):
     # print('2')
     loop.create_task(func())
     # print('3')
-    await message.answer("Вы успешно запустили бота!", reply_markup=actions.actions_after_run()) #работает после изиенений в календарях (???)
+    await message.answer("Вы успешно запустили бота!",
+                         reply_markup=actions.actions_after_run())  # работает после изиенений в календарях (???)
 
 
 # @create_bot.dp.message_handler(text="Установить время оповещений")
@@ -128,7 +123,7 @@ async def update_deleting_keyboard(message: types.Message, text: str, account: A
     # for i in range(len(create_bot.account)):
     #     if create_bot.account[i].chat_id == message.from_user.id:
     await message.edit_text(text + "Выберите календари, которые вы хотите вернуть",
-                                    reply_markup=calendars.gen_del_markup(account.deleting_calendars))
+                            reply_markup=calendars.gen_del_markup(account.deleting_calendars))
 
 
 # @create_bot.dp.callback_query_handler(Text(startswith="calendar_"))
@@ -161,7 +156,7 @@ async def callbacks_num(call: types.CallbackQuery):
                     if action == str(j):
                         calendar_whole, calendar_title = get_calendar_and_title(j, create_bot.account[i])
                         create_bot.account[i].deleting_calendars.append(create_bot.account[i].list_calendar.pop(j))
-                        utils.update_events(create_bot.account[i])
+                        create_bot.account[i].list_events = utils.get_events(create_bot.account[i])
                         await update_keyboard(call.message, calendar_title + " успешно удален. ", create_bot.account[i])
             await call.answer()
 

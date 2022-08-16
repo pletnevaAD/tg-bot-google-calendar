@@ -2,15 +2,11 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 import create_bot
 from account import Account
-from utils import fun
 
 
 def genmarkup(account: Account):
     keyboard_calendars1 = InlineKeyboardMarkup(row_width=2)
-    account.list_calendar.clear()
-    account.list_calendar.extend(fun(account))
     length1 = len(account.list_calendar)
-    length2 = len(account.deleting_calendars)
     for i in account.deleting_calendars:
         for k in account.list_calendar:
             if (i['id']) == (k['id']):

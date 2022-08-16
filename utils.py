@@ -1,16 +1,12 @@
+import pprint
 from datetime import datetime, timezone
+import re
+
+from deepdiff import DeepDiff, extract
+from deepdiff.helper import CannotCompare
 
 import create_bot
 from account import Account
-
-
-def fun(account: Account):
-    result = account.service.calendarList().list().execute()
-    length = len(result['items'])
-    local_list_calendar = []
-    for i in range(length):
-        local_list_calendar.append(result['items'][i])
-    return local_list_calendar
 
 
 def get_my_events(account: Account, calendarId, timeMin, timeMax):
@@ -18,69 +14,93 @@ def get_my_events(account: Account, calendarId, timeMin, timeMax):
     return result
 
 
-def update_events(account: Account): #сделать с привязкой к удаленному календарю
-    account.list_events.clear()
+# def update_events_1(account: Account):  # сделать с привязкой к удаленному календарю
+#     account.list_events.clear()
+#     for calendar in account.list_calendar:
+#         account.list_events.append(account.service.events().list(calendarId=calendar['id'],
+#                                                                  timeMin=(
+#                                                                              datetime.utcnow()).isoformat() + 'Z').execute()[
+#                                        'items'])
+
+
+def get_events(account: Account):
+    result = []
     for calendar in account.list_calendar:
-        account.list_events.append(account.service.events().list(calendarId=calendar['id'],
-                                                                 timeMin=(
-                                                                             datetime.utcnow()).isoformat() + 'Z').execute()[
-                                       'items'])
+        result.append(account.service.events().list(calendarId=calendar['id'],
+                                                    timeMin=(datetime.utcnow()).isoformat() + 'Z').execute()['items'])
+    return result
 
 
-async def get_new_calendar(account: Account):
+def compare_func(x, y, level=None):
+    try:
+        return x['id'] == y['id']
+    except Exception:
+        raise CannotCompare() from None
+
+
+async def update_calendar(account: Account):
     result = account.service.calendarList().list().execute()['items']
-    length_now = len(result)
-    length_prev = len(account.list_calendar) + len(account.deleting_calendars)
-    if length_now != length_prev:
-        if length_now < length_prev:
-            for index, item in enumerate(list(account.list_calendar)):
-                if item not in result:
-                    account.list_calendar.pop(index)
+    ddiff = DeepDiff(account.list_calendar + account.deleting_calendars, result,
+                     iterable_compare_func=compare_func)
+    if ddiff:
+        if 'iterable_item_added' in ddiff:
+            for new_calendar_path in list(ddiff['iterable_item_added'].keys()):
+                new_calendar = extract(result, new_calendar_path)
+                account.list_calendar.append(new_calendar)
+                account.list_events = get_events(account)
+                await create_bot.bot.send_message(account.chat_id,
+                                                  text="На сервере был добавлен календарь " + new_calendar['summary'] +
+                                                       ". \nЕсли не хотите получать уведомления из этого календаря, "
+                                                       "введите /start и уберите данный календарь")
+        if 'iterable_item_removed' in ddiff:
+            for removed_calendar_path in list(ddiff['iterable_item_removed'].keys()):
+                m = re.search(r'\[([0-9]+)\]', removed_calendar_path)
+                index_del = (int(m.group(1).replace('[', '').replace(']', '')))
+                length_list = len(account.list_calendar)
+                if index_del < length_list:
+                    calendar_title = account.list_calendar[index_del]['summary']
+                    account.list_calendar.pop(index_del)
+                    account.list_events = get_events(account)
                     await create_bot.bot.send_message(account.chat_id,
-                                                      text="На сервере был удален календарь " + item['summary'])
-            for index, item in enumerate(list(account.deleting_calendars)):
-                if item not in result:
-                    account.deleting_calendars.pop(index)
-                    await create_bot.bot.send_message(account.chat_id,
-                                                      text="На сервере был удален календарь " + item['summary'])
-        else:
-            for item in result:
-                if item not in (list(account.list_calendar) + list(account.deleting_calendars)):
-                    account.list_calendar.append(item)
-                    await create_bot.bot.send_message(account.chat_id,
-                                                      text="На сервере был добавлен календарь " + item['summary'] +
-                                                           ". \nЕсли не хотите получать уведомления из этого календаря, "
-                                                           "введите /start и уберите данный календарь")
+                                                      text="На сервере был удален календарь " +
+                                                           calendar_title)
+                    print("эвэйтнули")
 
-    else:
-        if result != account.list_calendar + account.deleting_calendars:
-            for item_result in result:
-                if item_result not in (list(account.list_calendar) + list(account.deleting_calendars)):
-                    for index, item in enumerate(list(account.deleting_calendars)):
-                        if item not in result:
-                            account.deleting_calendars.pop(index)
-                            account.deleting_calendars.append(item_result)
-                            if item_result['summary'] != item['summary']:
-                                await create_bot.bot.send_message(account.chat_id,
-                                                                  text="Название календаря " + item[
-                                                                      'summary'] + " было поменяно на " +
-                                                                       item_result[
-                                                                           'summary'])
-                            else:
-                                return
-                    for index, item in enumerate(list(account.list_calendar)):
-                        if item not in result:
-                            account.list_calendar.pop(index)
-                            account.list_calendar.append(item_result)
-                            if item_result['summary'] != item['summary']:
-                                await create_bot.bot.send_message(account.chat_id,
-                                                                  text="Название календаря " + item[
-                                                                      'summary'] + " было поменяно на " +
-                                                                       item_result[
-                                                                           'summary'])
-                            else:
-                                return
-        return
+                else:
+                    calendar_title = account.deleting_calendars[index_del - length_list]['summary']
+                    account.deleting_calendars.pop(index_del - length_list)
+                    await create_bot.bot.send_message(account.chat_id,
+                                                      text="На сервере был удален календарь " +
+                                                           calendar_title)
+        if 'values_changed' in ddiff:
+            for changed_calendar_path in list(ddiff['values_changed'].keys()):
+                m = re.search(r'\[([0-9]+)\]', changed_calendar_path)
+                index_change = (int(m.group(1).replace('[', '').replace(']', '')))
+                length_list = len(account.list_calendar)
+                if index_change < length_list:
+                    before_title = account.list_calendar[index_change]['summary']
+                    result_item = None
+                    for item in result:
+                        if item['id'] == account.list_calendar[index_change]['id']:
+                            result_item = item
+                    listok = account.list_calendar
+                    account.list_calendar.pop(index_change)
+                    account.list_calendar.insert(index_change, result_item)
+                    account.list_events = get_events(account)
+                    print("SOS____________\n", DeepDiff(listok, account.list_calendar))
+                    if result_item['summary'] != before_title:
+                        await create_bot.bot.send_message(account.chat_id,
+                                                          text="Название календаря " +
+                                                               before_title + " было поменяно на " +
+                                                               result_item['summary'])
+
+                else:
+                    result_item = None
+                    for item in result:
+                        if item['id'] == account.deleting_calendars[index_change - length_list]['id']:
+                            result_item = item
+                    account.deleting_calendars.pop(index_change - length_list)
+                    account.deleting_calendars.insert(index_change - length_list, result_item)
 
 
 def get_events_description(item):
@@ -104,47 +124,45 @@ def get_events_description(item):
     return event_descr
 
 
-async def get_new_events(account: Account):
-    result = []
-    # print(account.list_calendar)
-    for calendar in account.list_calendar:
-        result.append(account.service.events().list(calendarId=calendar['id'],
-                                                    timeMin=(datetime.utcnow()).isoformat() + 'Z').execute()['items'])
-    if result != account.list_events:
-        length_result = len(result)
-        for i in range(length_result):
-            if result[i] != account.list_events[i]:
-                length_now = len(result[i])
-                length_prev = len(account.list_events[i])
-                if length_now != length_prev:
-                    if length_now < length_prev:
-                        for index, item in enumerate(list(account.list_events[i])):
-                            if item not in result[i]:
-                                account.list_events[i].pop(index)
-                                await create_bot.bot.send_message(account.chat_id,
-                                                                  text="На сервере было удалено:\n " +
-                                                                       get_events_description(item))
-                    elif length_now > length_prev:
-                        for item in result[i]:
-                            if item not in account.list_events[i]:
-                                account.list_events[i].append(item)
-                                await create_bot.bot.send_message(account.chat_id,
-                                                                  text="На сервере было добавлено:\n" +
-                                                                       get_events_description(item))
-                else:
-                    for item_result in result[i]:
-                        if item_result not in account.list_events[i]:
-                            for index, item in enumerate(list(account.list_events[i])):
-                                if item not in result[i]:
-                                    account.list_events[i].pop(index)
-                                    account.list_events[i].append(item_result)
-                                    if get_events_description(item) != get_events_description(item_result):
-                                        await create_bot.bot.send_message(account.chat_id,
-                                                                          text="Обновлено\n" + get_events_description(
-                                                                              item) + "на\n" + get_events_description(
-                                                                              item_result))
-    else:
-        return
+async def update_events(account: Account):
+    result = get_events(account)
+    ddiff = DeepDiff(account.list_events, result, iterable_compare_func=compare_func)
+    # pprint.pprint(ddiff)
+    if ddiff:
+        if 'iterable_item_added' in ddiff:
+            for new_event_path in list(ddiff['iterable_item_added'].keys()):
+                new_event = extract(result, new_event_path)
+                m = re.search(r'\[([0-9]+)\]', new_event_path)
+                index_calendar = (int(m.group(1).replace('[', '').replace(']', '')))
+                account.list_events[index_calendar].append(new_event)
+                await create_bot.bot.send_message(account.chat_id,
+                                                  text="На сервере было добавлено:\n" +
+                                                       get_events_description(new_event))
+        if 'iterable_item_removed' in ddiff:
+            for removed_event_path in list(ddiff['iterable_item_removed'].keys()):
+                del_event = extract(account.list_events, removed_event_path)
+                index_del = re.findall(r'\[([0-9]+)\]', removed_event_path)
+                account.list_events[int(index_del[0])].pop(int(index_del[1]))
+                await create_bot.bot.send_message(account.chat_id,
+                                                  text="На сервере было удалено:\n " +
+                                                       get_events_description(del_event))
+        if 'values_changed' in ddiff:
+            for changed_calendar_path in list(ddiff['values_changed'].keys()):
+
+                result_item = None
+                index_change = re.findall(r'\[([0-9]+)\]', changed_calendar_path)
+                for calendar in result:
+                    for item in calendar:
+                        if item['id'] == account.list_events[int(index_change[0])][int(index_change[1])]['id']:
+                            result_item = item
+                before_item = account.list_events[int(index_change[0])][int(index_change[1])]
+                account.list_events[int(index_change[0])].pop(int(index_change[1]))
+                account.list_events[int(index_change[0])].insert(int(index_change[1]), result_item)
+                if get_events_description(result_item) != get_events_description(before_item):
+                    await create_bot.bot.send_message(account.chat_id,
+                                                      text="Обновлено\n" + get_events_description(
+                                                          before_item) + "на\n" + get_events_description(
+                                                          result_item))
 
 
 async def get_event_in_time(account: Account):
